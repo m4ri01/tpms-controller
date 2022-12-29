@@ -1,0 +1,66 @@
+version: '3'
+services:
+  mqtt:
+    image: eclipse-mosquitto:1.6
+    container_name: brokerService
+    volumes:
+    - ./mqtt/:/mosquitto/config/
+    ports:
+    - "9001:9001"
+    - "1883:1883"
+    restart: always
+  db:
+    container_name: dbService
+    image: mongo:4.4
+    restart: always
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: root
+      MONGODB_INITDB_ROOT_PASSWORD: hahaha111
+    ports:
+    - '5432:5432'
+    volumes:
+    - ./mongo/data:/data/db
+    - ./mongo/backup:/backup
+  rtl433:
+    build: 
+      context: ./rtlbuild
+      args:
+        BROKER: "mqtt"
+    image: m4ri01/rtl433
+    container_name: rtlService
+    restart: always
+    depends_on:
+    - mqtt
+    links:
+    - mqtt
+    privileged: true
+    volumes:
+    - /dev/bus/usb:/deb/bus/usb
+    command: bash -c "rtl_433 -R 201 -F json -M utc | mosquitto_pub -t /rtl_433 -h mqtt -l"
+  website:
+    image: httpd
+    container_name: websiteService
+    ports:
+    - '80:80'
+    volumes:
+    - /website:/usr/local/apache2/htdocs
+    depends_on:
+    - mqtt
+    links:
+    - mqtt
+    restart: always
+  python:
+    build:
+      context: ./python
+    image: m4ri01/integrator
+    container_name: pythonService
+    restart: always
+    depends_on:
+    - mqtt
+    - db
+    links:
+    - mqtt
+    - db
+    volumes:
+    - ./python/app:/app
+    command: bash -c "python3 /app/integrator.py"
